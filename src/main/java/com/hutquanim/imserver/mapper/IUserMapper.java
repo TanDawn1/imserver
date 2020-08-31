@@ -8,8 +8,10 @@ import java.util.Optional;
 @Repository
 public interface IUserMapper {
 
-
-    Optional<User> findById(Long id);
+    Optional<User> findById(Integer id);
 
     User save(User user);
+
+    User login(Integer userId);
+
 }

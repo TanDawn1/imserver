@@ -24,7 +24,7 @@ public class MessageSchedule {
     private MessageService messageService;
 
     //每日凌晨4点将Redis中的消息转储到MySQL
-    //@Scheduled(cron = "0 0 4 * * ?")
+    ////@Scheduled(cron = "0 0 4 * * ?")
     private void saveMessage() {
         try {
 

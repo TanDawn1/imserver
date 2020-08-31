@@ -14,6 +14,7 @@ import java.util.List;
  */
 @Service
 public class MessageService {
+
     @Autowired
     private IMessageMapper imessageMapper;
 

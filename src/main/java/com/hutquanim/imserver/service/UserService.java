@@ -16,7 +16,7 @@ public class UserService {
     @Autowired
     private IUserMapper iUserMapper;
 
-    public User getUserById(Long id) {
+    public User getUserById(Integer id) {
         Optional<User> userData = iUserMapper.findById(id);
         return userData.orElse(null);
     }

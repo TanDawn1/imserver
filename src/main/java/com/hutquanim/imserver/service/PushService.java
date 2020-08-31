@@ -13,7 +13,6 @@ import java.util.Map;
 /**
  * 推送系统，需要推送API支持
  */
-@Service
 public class PushService {
     @Value("${push.app.id}")
     private String appId;

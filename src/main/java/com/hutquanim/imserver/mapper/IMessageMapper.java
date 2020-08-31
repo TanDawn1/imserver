@@ -9,7 +9,6 @@ import java.util.List;
 @Repository
 public interface IMessageMapper {
 
-
     Message save(Message message);
 
     Iterable<Message> saveAll(List<Message> messages);

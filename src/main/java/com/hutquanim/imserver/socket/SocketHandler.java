@@ -84,10 +84,10 @@ public class SocketHandler implements WebSocketHandler {
                 users.put(((User)user).getUserId(), receiver);
                 //将用户存储进Redis中，表示用户在线？？？ TODO
                 //WebSocketUser
-                redisService.set(Constants.WEBSOCKET_USER + ((User)user).getUserId(), true);
+                //redisService.set(Constants.WEBSOCKET_USER + ((User)user).getUserId(), true);
                 redisUtils.hset(Constants.WEBSOCKET_USER,((User)user).getUserId().toString(),true);
 
-                //把30天内未读消息转发
+                //未读消息转发
                 sendNoReadMessage(((User)user).getUserId(), session);
             }
             //session.sendMessage(new TextMessage("成功建立socket连接"));
@@ -98,6 +98,7 @@ public class SocketHandler implements WebSocketHandler {
 
 
     //用户上线时将所有未发送消息发送给用户
+    //TODO 这里需要想办法优化，查询了一次数据库，插入了一次数据库
     public void sendNoReadMessage(Integer id, WebSocketSession session) {
         try {
             List<Message> messages = new ArrayList<>();
@@ -112,7 +113,7 @@ public class SocketHandler implements WebSocketHandler {
                     messages.add(msg);
                 }
             }
-            //添加数据库中的消息 TODO 不获取数据库中的
+            //添加数据库中未读的消息 TODO
             //messages.addAll(messageService.getNoReadMessagesFromDB(id));
             for (Message m : messages) {
                 //判断消息是否已发送 只转发未读的
@@ -124,7 +125,7 @@ public class SocketHandler implements WebSocketHandler {
                 //将消息置已发送
                 m.setAlreadySent(true);
             }
-            //将消息插入数据库
+            //将数据存储到数据库 TODO
             //messageService.insertMessages(messages);
         } catch (Exception e) {
             logger.error(e.getMessage());
@@ -204,16 +205,16 @@ public class SocketHandler implements WebSocketHandler {
     public void sendMessageToUser(Message message) {
         message.setTime(Instant.now().getEpochSecond());
         //获取发送人Id
-        Long srcUserId = message.getSrcUserId();
+        Integer srcUserId = message.getSrcUserId();
         //获取接收人Id
-        Long userId = message.getDesUserId();
+        Integer userId = message.getDesUserId();
         //0 是系统消息，发送给所有用户 未实现
-        if(srcUserId.equals(0L) && userId.equals(0L)) {
+        if(srcUserId.equals(0) && userId.equals(0)) {
             sendMessageToAllUsers(new TextMessage(JSON.toJSONString(message)));
         } else {
             //判断是否在线 TODO
-            if(Boolean.TRUE.equals(redisService.get(Constants.WEBSOCKET_USER + userId))){
-                //消息接收者在线 直接通过Redis发布与订阅的方式发布
+            if(Boolean.TRUE.equals(redisUtils.hget(Constants.WEBSOCKET_USER,userId.toString()))){
+                //消息接收者在线 直接通过 Redis发布/订阅的方式 发布
                 redisService.convertAndSend(message.buildTopic(), JSONObject.toJSONString(message));
                 logger.info("消息转发：" + message);
                 //成功发送
@@ -289,11 +290,13 @@ public class SocketHandler implements WebSocketHandler {
 
     private void removeDisconnectedUser(Integer uid) {
         if(users.containsKey(uid)) {
+            //移除订阅
             redisMessageListenerContainer.removeMessageListener(users.get(uid));
         }
         users.remove(uid);
+        logger.info("设置用户"+uid+"在线状态为false");
         //设置用户不在线
-        redisService.set(Constants.WEBSOCKET_USER + uid, false);
+        redisUtils.hset(Constants.WEBSOCKET_USER,uid.toString(),false);
     }
 }
 

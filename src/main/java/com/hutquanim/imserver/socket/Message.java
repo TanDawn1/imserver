@@ -8,11 +8,11 @@ import lombok.Data;
 
 public class Message {
 
-    private Long id;
+    private Integer id;
 
-    private Long srcUserId;//发送人ID
+    private Integer srcUserId;//发送人ID
 
-    private Long desUserId;//接收人ID
+    private Integer desUserId;//接收人ID
 
     private String content;//消息内容
 

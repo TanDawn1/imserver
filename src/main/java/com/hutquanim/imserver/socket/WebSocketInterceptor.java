@@ -1,6 +1,7 @@
 package com.hutquanim.imserver.socket;
 
 import com.hutquanim.imserver.common.Constants;
+import com.hutquanim.imserver.mapper.IUserMapper;
 import com.hutquanim.imserver.pojo.User;
 import com.hutquanim.imserver.service.UserService;
 import com.hutquanim.imserver.utils.RedisUtils;
@@ -15,7 +16,6 @@ import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 
 import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpSession;
 import java.util.Map;
 
 @Component
@@ -27,6 +27,9 @@ public class WebSocketInterceptor implements HandshakeInterceptor {
 
     @Autowired
     private RedisUtils redisUtils;
+
+    @Autowired
+    private IUserMapper iUserMapper;
 //    @Autowired
 //    private AdminService adminService;
 
@@ -42,10 +45,23 @@ public class WebSocketInterceptor implements HandshakeInterceptor {
     @Override
     public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse serverHttpResponse, WebSocketHandler webSocketHandler, Map<String, Object> attributes) throws Exception {
         HttpServletRequest httpServletRequest = ((ServletServerHttpRequest) request).getServletRequest();
-        //获取user
-        User user = (User) redisUtils.get(httpServletRequest.getHeader("token"));
+        logger.info("进入ws拦截器");
+        logger.info(httpServletRequest.getRequestURL().toString());
 
-        if(user != null && user.getUserId() > 0){
+        User user = null;
+
+        String userId = httpServletRequest.getParameter("userId");
+        String token = httpServletRequest.getParameter("token");
+        logger.info(userId + " " + token);
+        //判断是否符合用户登录之后所用的Token
+        if(redisUtils.hget("userToken",userId).equals(token)){
+            //获取user 由于序列化方式的问题，所以不能使用这种方式获取
+            //User user = (User) redisUtils.get(httpServletRequest.getHeader("token"));
+            //查找数据库
+            user = iUserMapper.login(Integer.valueOf(userId));
+        }
+
+        if(user != null && user.getUserId() >= 0){
             //把用户数据存储到Map<String, Object> attributes中
             attributes.put(Constants.WEBSOCKET_USER, user);
 
@@ -53,7 +69,7 @@ public class WebSocketInterceptor implements HandshakeInterceptor {
 
             return true;
         }
-
+        logger.info("认证不通过");
         return  false;
 
 //        if (request instanceof ServletServerHttpRequest) {
