@@ -6,10 +6,10 @@ spring:
     database: 1
     lettuce:
       pool:
-        max-active: 8
+        max-active: 2
         min-idle: 0
         max-wait: 6000ms
-        max-idle: 8
+        max-idle: 2
     password: redis123.
 
   datasource:

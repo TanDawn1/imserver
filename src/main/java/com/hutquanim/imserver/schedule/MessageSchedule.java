@@ -14,15 +14,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-@Component
+/**
+ * 用户定时将Redis的数据存储入Mysql
+ * 但是考虑到Redis的AOF的持久化也是很可靠的，所以并未采取这样的方式去转存数据
+ */
+//@Component
 public class MessageSchedule {
     private static final Logger logger = LoggerFactory.getLogger(MessageSchedule.class);
-    @Autowired
+    //@Autowired
     private RedisService redisService;
 
-    @Autowired
+//    @Autowired
     private MessageService messageService;
-
     //每日凌晨4点将Redis中的消息转储到MySQL
     ////@Scheduled(cron = "0 0 4 * * ?")
     private void saveMessage() {

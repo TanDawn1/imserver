@@ -82,9 +82,7 @@ public class SocketHandler implements WebSocketHandler {
                 }
                 //把用户数据存储进Map维护的用户列表
                 users.put(((User)user).getUserId(), receiver);
-                //将用户存储进Redis中，表示用户在线？？？ TODO
-                //WebSocketUser
-                //redisService.set(Constants.WEBSOCKET_USER + ((User)user).getUserId(), true);
+                //将用户存储进Redis中，表示用户在线
                 redisUtils.hset(Constants.WEBSOCKET_USER,((User)user).getUserId().toString(),true);
 
                 //未读消息转发
@@ -98,11 +96,11 @@ public class SocketHandler implements WebSocketHandler {
 
 
     //用户上线时将所有未发送消息发送给用户
-    //TODO 这里需要想办法优化，查询了一次数据库，插入了一次数据库
     public void sendNoReadMessage(Integer id, WebSocketSession session) {
         try {
             List<Message> messages = new ArrayList<>();
-            String pattern = Constants.WEBSOCKET_MESSAGE + "*:" + id;
+            //从Redis中获取未发送的消息
+            String pattern = Constants.WEBSOCKET_MESSAGE_NO + "*:" + id;
             //匹配所有指定的key -> Message:*:id
             Set<String> keys = redisService.getAllKeyByPattern(pattern);
 
@@ -113,20 +111,35 @@ public class SocketHandler implements WebSocketHandler {
                     messages.add(msg);
                 }
             }
-            //添加数据库中未读的消息 TODO
+            //查找数据库中未读消息
+            //原因: 每天的凌晨3点会将Redis中的所有聊天数据都转存到Mysql中
+            //TODO 未采用这种方式
             //messages.addAll(messageService.getNoReadMessagesFromDB(id));
-            for (Message m : messages) {
-                //判断消息是否已发送 只转发未读的
-                if(!m.isAlreadySent()) {
-                    session.sendMessage(new TextMessage(JSONObject.toJSONString(m)));
-                }
-            }
+
+//            for (Message m : messages) {
+//                //判断消息是否已发送 只转发未读的
+//                if(!m.isAlreadySent()) {
+//                    session.sendMessage(new TextMessage(JSONObject.toJSONString(m)));
+//                }else{
+//                    //如果查询到消息已发送，则可以判断之后的消息都是已经发送过的
+//                    return;
+//                }
+//            }
             for(Message m : messages) {
+//                //判断一遍是否是未发送的 -> 其实这个判断无意义
+//                if(!m.isAlreadySent()) {
+//                    session.sendMessage(new TextMessage(JSONObject.toJSONString(m)));
+//                }
                 //将消息置已发送
                 m.setAlreadySent(true);
+                //存储入已发送Redis中  到了这一步表示用户已经订阅了Redis相应Key
+                //所以我发布进Redis就会被监听到，进而通过receiver转发
+                redisService.convertAndSend(m.buildTopic(), JSONObject.toJSONString(m));
+                logger.info("未读消息转发：" + m);
+                //存储进Redis 已发布key
+                redisUtils.set(Constants.WEBSOCKET_MESSAGE + m.getSrcUserId()+":"+id,m);
             }
-            //将数据存储到数据库 TODO
-            //messageService.insertMessages(messages);
+            logger.info(id+"未读消息转发完成");
         } catch (Exception e) {
             logger.error(e.getMessage());
         }
@@ -148,18 +161,19 @@ public class SocketHandler implements WebSocketHandler {
                     if(JSONObject.isValid(((TextMessage) webSocketMessage).getPayload())) {
                         //将JSON转化反序列化为对象
                         Message msg = JSONObject.parseObject(((TextMessage) webSocketMessage).getPayload(), Message.class);
-                        logger.debug("收到用户消息：" + msg);
+                        logger.info("收到用户消息：" + msg);
                         msg.setTime(Instant.now().getEpochSecond());
                         //调用发送方法
                         sendMessageToUser(msg);
                     } else {
-                        logger.debug("收到其他消息：" + ((TextMessage) webSocketMessage).getPayload());
+                        logger.info("收到其他消息：" + ((TextMessage) webSocketMessage).getPayload());
                     }
                 } catch (Exception e) {
-                    logger.debug("收到其他消息：" + ((TextMessage) webSocketMessage).getPayload());
+                    e.printStackTrace();
+                    logger.info("收到其他消息：" + ((TextMessage) webSocketMessage).getPayload());
                 }
             } else {
-                logger.debug("收到其他消息：" + webSocketMessage.getPayload());
+                logger.info("收到其他消息：" + webSocketMessage.getPayload());
             }
         }catch(Exception e){
             logger.error("消息处理失败：" + e.getMessage());
@@ -167,71 +181,44 @@ public class SocketHandler implements WebSocketHandler {
         }
     }
 
-//    @Async
-//    public void sendPushNotifyToUser(User user, Message message) {
-//        if(message.getType().equals(MessageType.text)) {
-//            User from = userService.getUserById(message.getSrcUserId());
-//            User to = userService.getUserById(message.getDesUserId());
-//            String content = message.getContent();
-//            if(StringUtils.isEmpty(content)) {
-//                switch (message.getType()) {
-//                    case video:
-//                        content = "[视频]";
-//                        break;
-//                    case audio:
-//                        content = "[语音]";
-//                        break;
-//                    case picture:
-//                        content = "[图片]";
-//                        break;
-//                }
-//            }
-//            PushModel pushModel = new PushModel(from.getNickName() + "给您发了消息",
-//                    content, JSON.toJSONString(message));
-//            pushService.sendNotifyToSingleUser(user, pushModel);
-//        } else {
-//            Map<String, Object> params = JSON.parseObject(message.getContent());
-//            PushModel pushModel = null;
-//            switch (SystemNotifyType.valueOf(params.get("type").toString())) {
-//                //Todo :
-//            }
-//            pushService.sendNotifyToSingleUser(user, pushModel);
-//        }
-//    }
     /**
      * 发送信息给指定用户n
-     src = 0 表示系统消息
+     src = 633 表示系统消息
      */
     public void sendMessageToUser(Message message) {
+        System.out.println(message);
         message.setTime(Instant.now().getEpochSecond());
         //获取发送人Id
         Integer srcUserId = message.getSrcUserId();
         //获取接收人Id
         Integer userId = message.getDesUserId();
-        //0 是系统消息，发送给所有用户 未实现
-        if(srcUserId.equals(0) && userId.equals(0)) {
+        //633 是系统消息，发送给所有用户 未实现
+        if(srcUserId == 633 && userId == 633) {
             sendMessageToAllUsers(new TextMessage(JSON.toJSONString(message)));
         } else {
-            //判断是否在线 TODO
+            //判断是否在线
             if(Boolean.TRUE.equals(redisUtils.hget(Constants.WEBSOCKET_USER,userId.toString()))){
                 //消息接收者在线 直接通过 Redis发布/订阅的方式 发布
                 redisService.convertAndSend(message.buildTopic(), JSONObject.toJSONString(message));
                 logger.info("消息转发：" + message);
                 //成功发送
                 message.setAlreadySent(true);
+                //存储入Redis 已发送Key
+                String key = Constants.WEBSOCKET_MESSAGE + message.getSrcUserId() + ":" + message.getDesUserId();
+                redisService.rightPush(key, message);
             } else {
                 //消息接收者不在线
-                User user = userService.getUserById(userId);
-                //TODO 处理不在线的私聊 存储到Redis,30天内登录是可以看到的
-                //sendPushNotifyToUser(user, message);
-                logger.info("消息推送：" + message);
+                //TODO 本该判断接收人是否存在，但是没啥必要，在移动端处理之后，不会出现这种情况
+                //User user = userService.getUserById(userId);
+                //TODO 这里可以使用移动端相关的推送平台
+                logger.info("消息未转发：" + message);
                 message.setAlreadySent(false);
+                //存储入Redis 未发送Key
+                String key = Constants.WEBSOCKET_MESSAGE_NO + message.getSrcUserId() + ":" + message.getDesUserId();
+                redisService.rightPush(key, message);
             }
         }
-        //将消息存储到Redis数据库
-        String key = Constants.WEBSOCKET_MESSAGE + message.getSrcUserId() + ":" + message.getDesUserId();
-        //发布
-        redisService.rightPush(key, message);
+
     }
 
     /**
