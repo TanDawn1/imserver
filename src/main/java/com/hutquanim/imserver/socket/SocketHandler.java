@@ -136,8 +136,8 @@ public class SocketHandler implements WebSocketHandler {
                 //所以我发布进Redis就会被监听到，进而通过receiver转发
                 redisService.convertAndSend(m.buildTopic(), JSONObject.toJSONString(m));
                 logger.info("未读消息转发：" + m);
-                //存储进Redis 已发布key
-                redisUtils.set(Constants.WEBSOCKET_MESSAGE + m.getSrcUserId()+":"+id,m);
+                //存储进Redis 已发布key 从左向右
+                redisUtils.lSet(Constants.WEBSOCKET_MESSAGE + m.getSrcUserId()+":"+id,m);
             }
             logger.info(id+"未读消息转发完成");
         } catch (Exception e) {
