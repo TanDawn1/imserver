@@ -60,32 +60,18 @@ public class WebSocketInterceptor implements HandshakeInterceptor {
             //查找数据库
             user = iUserMapper.login(Integer.valueOf(userId));
         }
-
         if(user != null && user.getUserId() >= 0){
             //把用户数据存储到Map<String, Object> attributes中
             attributes.put(Constants.WEBSOCKET_USER, user);
 
-            logger.info("用户: " + user.getUsername() + "连接成功" + request.getRemoteAddress());
+            //logger.info("用户: " + user.getUsername() + "连接成功" + request.getRemoteAddress());
+            logger.info("用户: " + userId + "连接成功" + request.getRemoteAddress());
 
             return true;
         }
         logger.info("认证不通过");
         return  false;
 
-//        if (request instanceof ServletServerHttpRequest) {
-//            HttpServletRequest httpServletRequest = ((ServletServerHttpRequest) request).getServletRequest();
-//            Long userId = Long.parseLong(httpServletRequest.getParameter("userId").toString());
-//            String password = httpServletRequest.getParameter("password");
-//            if(userId > 0) {
-//                User user = userService.getUserById(userId);
-//                if (null != user && user.getPassword().equals(password)) {
-//                    attributes.put(Constants.WEBSOCKET_USER, user);
-//                    logger.info("用户" + user.getNickName() + "连接并验证成功" + request.getRemoteAddress());
-//                    return true;
-//                }
-//            }
-//        }
-//        return false;
     }
 
     /**

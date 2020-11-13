@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 
 import com.hutquanim.imserver.common.Constants;
+import com.hutquanim.imserver.nettySocket.WebSocketServer;
 import com.hutquanim.imserver.pojo.User;
 import com.hutquanim.imserver.redis.Receiver;
 import com.hutquanim.imserver.redis.RedisService;
@@ -13,11 +14,14 @@ import com.hutquanim.imserver.utils.RedisUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Scope;
 import org.springframework.data.redis.listener.PatternTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.stereotype.Service;
 import org.springframework.web.socket.*;
 
+import javax.websocket.Session;
+import java.io.IOException;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -45,7 +49,7 @@ public class SocketHandler implements WebSocketHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(SocketHandler.class);
     //在线用户列表
-    private static final Map<Integer, Receiver> users;
+    private static final Map<Integer, WebSocketSession> users;
 
     static {
         users = new ConcurrentHashMap<>();
@@ -61,27 +65,28 @@ public class SocketHandler implements WebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
 
-        //在ws拦截器中已经把用户数据存储到了 ws_session中
+        //在ws拦截器中已经把用户数据存储到了 ws_session中占用连接数吗
         Object user = session.getAttributes().get(Constants.WEBSOCKET_USER);
 
         if (user != null) {
             if(user instanceof User) {
 
-                Receiver receiver = new Receiver();
-                receiver.setSession(session);
+//                Receiver receiver = new Receiver();
+//                receiver.setSession(session);
 
                 //设置订阅topic Message:*:selfUserId
                 //这样订阅发送消息给自己的用户
-                redisMessageListenerContainer.
-                        addMessageListener(receiver,
-                                new PatternTopic(Constants.WEBSOCKET_MESSAGE + "*:" + ((User)user).getUserId()));
-
-                //判断user是否已经存在连接在用户列表中，在的话关闭
+                //TODO 修改
+//                redisMessageListenerContainer.
+//                        addMessageListener(receiver,
+//                                new PatternTopic(Constants.WEBSOCKET_MESSAGE + "*:" + ((User)user).getUserId()));
+                // ，在的话关闭
                 if(users.containsKey(((User)user).getUserId())) {
-                    users.get(((User)user).getUserId()).getSession().close();
+                    users.get(((User)user).getUserId()).close();
                 }
                 //把用户数据存储进Map维护的用户列表
-                users.put(((User)user).getUserId(), receiver);
+                users.put(((User) user).getUserId(), session);
+//                users.put(((User)user).getUserId(), receiver);
                 //将用户存储进Redis中，表示用户在线
                 redisUtils.hset(Constants.WEBSOCKET_USER,((User)user).getUserId().toString(),true);
 
@@ -113,7 +118,7 @@ public class SocketHandler implements WebSocketHandler {
             }
             //查找数据库中未读消息
             //原因: 每天的凌晨3点会将Redis中的所有聊天数据都转存到Mysql中
-            //TODO 未采用这种方式
+            //未采用这种方式
             //messages.addAll(messageService.getNoReadMessagesFromDB(id));
 
 //            for (Message m : messages) {
@@ -126,15 +131,13 @@ public class SocketHandler implements WebSocketHandler {
 //                }
 //            }
             for(Message m : messages) {
-//                //判断一遍是否是未发送的 -> 其实这个判断无意义
-//                if(!m.isAlreadySent()) {
-//                    session.sendMessage(new TextMessage(JSONObject.toJSONString(m)));
-//                }
                 //将消息置已发送
                 m.setAlreadySent(true);
+                session.sendMessage(new TextMessage(JSONObject.toJSONString(m)));
+                //TODO 修改
                 //存储入已发送Redis中  到了这一步表示用户已经订阅了Redis相应Key
                 //所以我发布进Redis就会被监听到，进而通过receiver转发
-                redisService.convertAndSend(m.buildTopic(), JSONObject.toJSONString(m));
+                //redisService.convertAndSend(m.buildTopic(), JSONObject.toJSONString(m));
                 logger.info("未读消息转发：" + m);
                 //存储进Redis 已发布key 从左向右
                 redisUtils.lSet(Constants.WEBSOCKET_MESSAGE + m.getSrcUserId()+":"+id,m);
@@ -199,7 +202,14 @@ public class SocketHandler implements WebSocketHandler {
             //判断是否在线
             if(Boolean.TRUE.equals(redisUtils.hget(Constants.WEBSOCKET_USER,userId.toString()))){
                 //消息接收者在线 直接通过 Redis发布/订阅的方式 发布
-                redisService.convertAndSend(message.buildTopic(), JSONObject.toJSONString(message));
+                //TODO 修改
+//                redisService.convertAndSend(message.buildTopic(), JSONObject.toJSONString(message));
+                try {
+                    users.get(message.getDesUserId()).sendMessage(new TextMessage(JSONObject.toJSONString(message)));
+                } catch (IOException e) {
+                    logger.info("消息发送失败");
+                    e.printStackTrace();
+                }
                 logger.info("消息转发：" + message);
                 //成功发送
                 message.setAlreadySent(true);
@@ -276,10 +286,10 @@ public class SocketHandler implements WebSocketHandler {
     }
 
     private void removeDisconnectedUser(Integer uid) {
-        if(users.containsKey(uid)) {
-            //移除订阅
-            redisMessageListenerContainer.removeMessageListener(users.get(uid));
-        }
+//        if(users.containsKey(uid)) {
+//            //移除订阅
+//            redisMessageListenerContainer.removeMessageListener(users.get(uid));
+//        }
         users.remove(uid);
         logger.info("设置用户"+uid+"在线状态为false");
         //设置用户不在线
