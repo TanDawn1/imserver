@@ -1,6 +1,6 @@
 spring:
   redis:
-    host: 123.56.160.202
+    host: ***
     port: 6379
     # Redis数据库索引（默认为0）
     database: 1
@@ -10,12 +10,12 @@ spring:
         min-idle: 0
         max-wait: 6000ms
         max-idle: 2
-    password: redis123.
+    password: ***
 
   datasource:
     username: root
-    password: Admin123.
-    url: jdbc:mysql://123.56.160.202:3306/HUT_quan?characterEncoding=UTF-8
+    password: ***
+    url: jdbc:mysql:***
     driver-class-name: com.mysql.cj.jdbc.Driver
     type: com.alibaba.druid.pool.DruidDataSource
     # 下面为连接池的补充设置，应用到上面所有数据源中
